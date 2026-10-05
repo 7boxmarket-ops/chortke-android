@@ -24,6 +24,7 @@ jobs:
 
           if [ -z "$ZIP_FILE" ]; then
             echo "ERROR: CHORTKE ZIP file was not found."
+            echo "Repository files:"
             ls -la
             exit 1
           fi
@@ -58,6 +59,9 @@ jobs:
 
           if [ -z "$SETTINGS_FILE" ]; then
             echo "ERROR: settings.gradle or settings.gradle.kts was not found."
+            echo ""
+            echo "Searching extracted files:"
+            find extracted -maxdepth 5 -type f | sort
             exit 1
           fi
 
@@ -68,6 +72,9 @@ jobs:
 
           if [ ! -d "$PROJECT_DIR/app" ]; then
             echo "ERROR: app directory was not found."
+            echo ""
+            echo "Project contents:"
+            find "$PROJECT_DIR" -maxdepth 3 -type f | sort
             exit 1
           fi
 
@@ -79,7 +86,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Check Android SDK
+      - name: Locate Android SDK manager
         shell: bash
         run: |
           set -e
@@ -88,21 +95,53 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
           echo ""
-          echo "Available Android SDK:"
-          ls -la "$ANDROID_HOME"
+          echo "Searching for sdkmanager..."
 
-          echo ""
-          echo "SDK manager:"
-          sdkmanager --version
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+            -type f \
+            -name "sdkmanager" \
+            | head -n 1)
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager was not found."
+            find "$ANDROID_HOME/cmdline-tools" -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          echo "sdkmanager found:"
+          echo "$SDKMANAGER"
+
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -e
 
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
+          echo "Using:"
+          echo "$SDKMANAGER"
+
+          "$SDKMANAGER" --version
+
+          echo ""
+          echo "Accepting Android SDK licenses..."
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          echo ""
+          echo "Installing platform-tools..."
+
+          "$SDKMANAGER" "platform-tools"
+
+          echo ""
+          echo "Installing Android platform 35..."
+
+          "$SDKMANAGER" "platforms;android-35"
+
+          echo ""
+          echo "Installing build tools 35.0.0..."
+
+          "$SDKMANAGER" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -112,16 +151,27 @@ jobs:
       - name: Check build environment
         shell: bash
         run: |
-          echo "Java:"
+          echo "================================"
+          echo "JAVA"
+          echo "================================"
           java -version
 
           echo ""
-          echo "Gradle:"
+          echo "================================"
+          echo "GRADLE"
+          echo "================================"
           gradle --version
 
           echo ""
-          echo "Android SDK packages:"
-          sdkmanager --list_installed | head -n 50
+          echo "================================"
+          echo "ANDROID SDK"
+          echo "================================"
+          echo "SDK: $ANDROID_HOME"
+          echo "SDK Manager: $SDKMANAGER"
+
+          echo ""
+          echo "Installed Android SDK packages:"
+          "$SDKMANAGER" --list_installed | head -n 80
 
       - name: Build CHORTKE APK
         shell: bash
@@ -130,7 +180,9 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "Project directory:"
+          echo "================================"
+          echo "CHORTKE PROJECT"
+          echo "================================"
           pwd
 
           echo ""
@@ -138,7 +190,9 @@ jobs:
           ls -la
 
           echo ""
-          echo "Starting Gradle build..."
+          echo "================================"
+          echo "STARTING GRADLE BUILD"
+          echo "================================"
 
           gradle assembleDebug --no-daemon --stacktrace
 
@@ -147,6 +201,8 @@ jobs:
         run: |
           set -e
 
+          echo "Searching for generated APK..."
+
           APK_FILE=$(find "$PROJECT_DIR" \
             -type f \
             -name "*-debug.apk" \
@@ -154,11 +210,21 @@ jobs:
 
           if [ -z "$APK_FILE" ]; then
             echo "ERROR: Debug APK was not generated."
-            find "$PROJECT_DIR" -type f -name "*.apk" -print || true
+
+            echo ""
+            echo "Searching for any APK:"
+            find "$PROJECT_DIR" \
+              -type f \
+              -name "*.apk" \
+              -print || true
+
             exit 1
           fi
 
-          echo "APK generated successfully:"
+          echo ""
+          echo "================================"
+          echo "APK GENERATED SUCCESSFULLY"
+          echo "================================"
           echo "$APK_FILE"
 
           echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
