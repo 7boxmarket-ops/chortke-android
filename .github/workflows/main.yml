@@ -80,6 +80,41 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
+      # ==========================================
+      # TEMPORARY: FIND THE ACTUAL UI SOURCE
+      # ==========================================
+      - name: Find CHORTKE UI code
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "CHORTKE UI FILES"
+          echo "========================================"
+
+          find "$PROJECT_DIR/app/src/main" -type f \
+            \( \
+              -path "*/res/layout/*" \
+              -o -path "*/res/values/*" \
+              -o -name "*.kt" \
+              -o -name "*.java" \
+            \) \
+            | sort
+
+          echo ""
+          echo "========================================"
+          echo "SEARCHING FOR RELEVANT TEXT"
+          echo "========================================"
+
+          grep -RniE -C 15 \
+            'تومان|ارزش فعلی|نمودار|افزودن|تنظیمات|HOSSEIN|سرمایه' \
+            "$PROJECT_DIR/app/src/main" || true
+
+          echo ""
+          echo "========================================"
+          echo "END UI SEARCH"
+          echo "========================================"
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
