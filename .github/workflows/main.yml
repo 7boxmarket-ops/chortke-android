@@ -15,25 +15,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and extract CHORTKE ZIP
+      - name: Find CHORTKE ZIP
         shell: bash
         run: |
           set -e
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "CHORTKE*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found in repository root."
+            echo "ERROR: CHORTKE ZIP file was not found."
+            ls -la
             exit 1
           fi
 
-          echo "ZIP found: $ZIP_FILE"
+          echo "ZIP found:"
+          echo "$ZIP_FILE"
 
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+
+      - name: Extract CHORTKE project
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf extracted
           mkdir -p extracted
+
           unzip -q "$ZIP_FILE" -d extracted
 
           echo "Extracted contents:"
-          find extracted -maxdepth 3 -type f | sort
+          find extracted -maxdepth 4 -type f | sort
 
       - name: Locate Android project
         shell: bash
@@ -46,7 +57,7 @@ jobs:
           \) | head -n 1)
 
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: settings.gradle was not found."
+            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
             exit 1
           fi
 
@@ -57,6 +68,7 @@ jobs:
 
           if [ ! -d "$PROJECT_DIR/app" ]; then
             echo "ERROR: app directory was not found."
+            find "$PROJECT_DIR" -maxdepth 2 -type f | sort
             exit 1
           fi
 
@@ -76,6 +88,8 @@ jobs:
         run: |
           set -e
 
+          yes | sdkmanager --licenses || true
+
           sdkmanager "platform-tools"
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
@@ -84,6 +98,20 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
+      - name: Check build environment
+        shell: bash
+        run: |
+          echo "Java version:"
+          java -version
+
+          echo ""
+          echo "Gradle version:"
+          gradle --version
+
+          echo ""
+          echo "Android SDK packages:"
+          sdkmanager --list_installed | head -n 50
 
       - name: Build CHORTKE APK
         shell: bash
@@ -95,28 +123,41 @@ jobs:
           echo "Project directory:"
           pwd
 
+          echo ""
+          echo "Project files:"
+          ls -la
+
+          echo ""
           echo "Starting Gradle build..."
 
-          gradle assembleDebug --no-daemon
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Find generated APK
         shell: bash
         run: |
           set -e
 
-          APK_FILE=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
+          APK_FILE=$(find "$PROJECT_DIR" \
+            -type f \
+            -name "*-debug.apk" \
+            | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
-            echo "ERROR: No APK was generated."
+            echo "ERROR: Debug APK was not generated."
+
+            echo ""
+            echo "Searching for any APK:"
+            find "$PROJECT_DIR" -type f -name "*.apk" -print || true
+
             exit 1
           fi
 
-          echo "APK generated:"
+          echo "APK generated successfully:"
           echo "$APK_FILE"
 
           echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
 
-      - name: Upload APK
+      - name: Upload CHORTKE APK
         uses: actions/upload-artifact@v4
         with:
           name: CHORTKE-APK
