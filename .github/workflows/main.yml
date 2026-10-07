@@ -80,9 +80,6 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      # ==========================================
-      # TEMPORARY: FIND THE ACTUAL UI SOURCE
-      # ==========================================
       - name: Find CHORTKE UI code
         shell: bash
         run: |
@@ -208,43 +205,73 @@ jobs:
           echo "Installed Android SDK packages:"
           "$SDKMANAGER" --list_installed | head -n 80
 
-      - name: Build CHORTKE APK
+      - name: Decode CHORTKE release keystore
         shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.CHORTKE_KEYSTORE_BASE64 }}
         run: |
           set -e
+
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ERROR: CHORTKE_KEYSTORE_BASE64 secret is missing."
+            exit 1
+          fi
+
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/chortke-release.jks"
+
+          if [ ! -s "$RUNNER_TEMP/chortke-release.jks" ]; then
+            echo "ERROR: Release keystore could not be created."
+            exit 1
+          fi
+
+          echo "Release keystore prepared successfully."
+
+      - name: Build signed CHORTKE Release APK
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.CHORTKE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.CHORTKE_KEY_ALIAS }}
+        run: |
+          set -e
+
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "ERROR: CHORTKE_KEYSTORE_PASSWORD secret is missing."
+            exit 1
+          fi
+
+          if [ -z "$KEY_ALIAS" ]; then
+            echo "ERROR: CHORTKE_KEY_ALIAS secret is missing."
+            exit 1
+          fi
 
           cd "$PROJECT_DIR"
 
           echo "================================"
-          echo "CHORTKE PROJECT"
-          echo "================================"
-          pwd
-
-          echo ""
-          echo "Project files:"
-          ls -la
-
-          echo ""
-          echo "================================"
-          echo "STARTING GRADLE BUILD"
+          echo "CHORTKE RELEASE BUILD"
           echo "================================"
 
-          gradle assembleDebug --no-daemon --stacktrace
+          gradle assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/chortke-release.jks" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEYSTORE_PASSWORD"
 
-      - name: Find generated APK
+      - name: Find generated Release APK
         shell: bash
         run: |
           set -e
 
-          echo "Searching for generated APK..."
+          echo "Searching for generated Release APK..."
 
           APK_FILE=$(find "$PROJECT_DIR" \
             -type f \
-            -name "*-debug.apk" \
+            -name "*-release.apk" \
             | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
-            echo "ERROR: Debug APK was not generated."
+            echo "ERROR: Release APK was not generated."
 
             echo ""
             echo "Searching for any APK:"
@@ -258,15 +285,15 @@ jobs:
 
           echo ""
           echo "================================"
-          echo "APK GENERATED SUCCESSFULLY"
+          echo "RELEASE APK GENERATED SUCCESSFULLY"
           echo "================================"
           echo "$APK_FILE"
 
           echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
 
-      - name: Upload CHORTKE APK
+      - name: Upload CHORTKE Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: CHORTKE-APK
+          name: CHORTKE-RELEASE-APK
           path: ${{ env.APK_FILE }}
           if-no-files-found: error
