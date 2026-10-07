@@ -1,0 +1,42 @@
+name: Create CHORTKE Release Key
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-key:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Create CHORTKE release keystore
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.CHORTKE_KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -e
+
+          keytool -genkeypair \
+            -v \
+            -keystore chortke-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEYSTORE_PASSWORD" \
+            -alias chortke \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=CHORTKE, OU=7BOX, O=7BOX, L=Unknown, ST=Unknown, C=IR"
+
+          echo "CHORTKE release keystore created."
+
+      - name: Upload release keystore
+        uses: actions/upload-artifact@v4
+        with:
+          name: CHORTKE-RELEASE-KEY
+          path: chortke-release.jks
+          if-no-files-found: error
